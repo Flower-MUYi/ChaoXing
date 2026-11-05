@@ -1,4 +1,4 @@
-// local-proxy.js - 本地零依赖全功能 Web 服务 + 代理服务器
+// local-proxy.js - 本地零依赖全功能 Web 服务 + 自动免密登录代理
 import http from 'http';
 import https from 'https';
 import fs from 'fs';
@@ -8,6 +8,19 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const PORT = 8787;
+
+// 预存已验证成功的会话数据
+let activeSession = {
+  phoneNumber: "18650828531",
+  name: "杨松",
+  school: "井冈山大学",
+  uname: "2307106004",
+  puid: 293229202,
+  uid: 246667203,
+  fid: 1264,
+  avatar: "https://photo.chaoxing.com/p/293229202_120?flag=1&psize=120_120c&ext=jpg",
+  cookies: "JSESSIONID=C2197994E22E44FDA92755DACF4ED7AB; fid=1264; _uid=293229202; _d=1793910065759; UID=293229202; vc3=b4saRz%2BsHzAuTGAtibQ4nw8ihgwUqLeCzdszmEBCbpLtWyMn2wmO3aR5VwIPqPjNxNw%2BhcIwMIHtfmKsGwoDWT7N9bfZ%2FtPqX0JvzinRIAvRAMXPdnYxNbQrEsVnZc1WW87L2%2F9WtT1NtRQk7UNkmg%2FfKmBoFvPDUYZil3SSnLI%3D43958cd024b1ab4b01ffde19829aef7a; uf=b2d2c93beefa90dcd3bd18cf1d9ac5837d2e650a22d3c653e997605a150451365934c1d1e23b63048509d9310e0ea87481a6c9ddee30899fd807a544f7930b6aed1e6c11a143bb563b0339d97cdac4baa7000e8371c8054d713028f1ec42bf71b1188854805578ccd29b4c664b2bc417d0812e9e8f5f1c12ef595a01d26d223816f7c0667fc6931d480ff42a0f4aadf14df7ff280fcb29d10d8a4c92b12beb4ba5c798ff8eda40962c6b0b5f1aa7bc0c560d457d8c24c6dfe7fafd565af53bf2; cx_p_token=ce3cc17f17504d1c424be9a86c8a35e5; p_auth_token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOiIyOTMyMjkyMDIiLCJsb2dpblRpbWUiOjE3OTM5MTAwNjU3NjAsImV4cCI6MTc5NDUxNDg2NX0.9iA5yWRm91NZFqeXlaW5F-qlzsN1LQYXkoHhRd80Z_4; xxtenc=65687a8a0997f167e454f980f7ecf68b; DSSTASH_LOG=C_38-UN_1213-US_293229202-T_1793910065760; route=2763694f69e41d34a4f731c4671ac18e"
+};
 
 const MIME_TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -34,9 +47,16 @@ const server = http.createServer((req, res) => {
   }
 
   const reqUrl = new URL(req.url, `http://localhost:${PORT}`);
-  const targetUrl = reqUrl.searchParams.get('url') || req.headers['x-target-url'];
 
-  // 1. 如果有 targetUrl，执行反向代理
+  // 1. 获取预设自动登录 Session 接口
+  if (reqUrl.pathname === '/api/current-session') {
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+    res.end(JSON.stringify({ status: 'ok', session: activeSession }));
+    return;
+  }
+
+  // 2. 代理请求逻辑
+  const targetUrl = reqUrl.searchParams.get('url') || req.headers['x-target-url'];
   if (targetUrl) {
     try {
       const target = new URL(targetUrl);
@@ -88,7 +108,7 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // 2. 没有 targetUrl，作为静态网页服务器提供前端网页
+  // 3. 静态前端资源分发
   let pathname = reqUrl.pathname;
   if (pathname === '/' || pathname === '') {
     pathname = '/index.html';

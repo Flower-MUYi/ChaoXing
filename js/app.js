@@ -73,14 +73,25 @@ const app = createApp({
       loadSavedAccounts();
       loadSavedPresets();
 
-      // 自动侦测本机服务
+      // 自动侦测本机服务与已激活会话
       try {
-        const resp = await fetch('http://127.0.0.1:8787/', { method: 'GET' });
+        const resp = await fetch('http://127.0.0.1:8787/api/current-session', { method: 'GET' });
         const res = await resp.json();
-        if (res && res.status === 'ok') {
+        if (res && res.session) {
           proxyMode.value = 'local';
           api.setProxyConfig({ mode: 'local' });
-          console.log('✓ 本地极速代理服务 (127.0.0.1:8787) 已就绪！');
+
+          // 自动导入已激活的杨松同学账号
+          const s = res.session;
+          cookieJar.setAccountKey(s.phoneNumber);
+          cookieJar.importRawString(s.cookies);
+          AccountStorage.save(s);
+          AccountStorage.setCurrentPhone(s.phoneNumber);
+          currentUser.value = s;
+          selectedPhone.value = s.phoneNumber;
+          loadSavedAccounts();
+          loadCourses();
+          console.log(`✓ 已自动激活用户: ${s.name} (${s.school})`);
         }
       } catch (e) {
         // 本地服务未启动，保持用户配置
