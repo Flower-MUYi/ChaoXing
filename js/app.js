@@ -73,6 +73,19 @@ const app = createApp({
       loadSavedAccounts();
       loadSavedPresets();
 
+      // 自动侦测本机服务
+      try {
+        const resp = await fetch('http://127.0.0.1:8787/', { method: 'GET' });
+        const res = await resp.json();
+        if (res && res.status === 'ok') {
+          proxyMode.value = 'local';
+          api.setProxyConfig({ mode: 'local' });
+          console.log('✓ 本地极速代理服务 (127.0.0.1:8787) 已就绪！');
+        }
+      } catch (e) {
+        // 本地服务未启动，保持用户配置
+      }
+
       const currentPhone = AccountStorage.getCurrentPhone();
       if (currentPhone) {
         switchAccount(currentPhone);

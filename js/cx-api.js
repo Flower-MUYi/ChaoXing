@@ -30,11 +30,12 @@ class ChaoxingApi {
     const cookieStr = this.cookieJar.toCookieHeader();
     if (cookieStr) {
       headers.set('x-target-cookie', cookieStr);
-      // 部分支持凭证的直连或定制 worker:
       try { headers.set('Cookie', cookieStr); } catch (e) {}
     }
 
-    if (this.proxyConfig.mode === 'worker' && this.proxyConfig.workerUrl) {
+    if (this.proxyConfig.mode === 'local') {
+      finalUrl = `http://127.0.0.1:8787/?url=${encodeURIComponent(targetUrl)}`;
+    } else if (this.proxyConfig.mode === 'worker' && this.proxyConfig.workerUrl) {
       const base = this.proxyConfig.workerUrl.replace(/\/+$/, '');
       finalUrl = `${base}/?url=${encodeURIComponent(targetUrl)}`;
     } else if (this.proxyConfig.mode === 'corsproxy') {

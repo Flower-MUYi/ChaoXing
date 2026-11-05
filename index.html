@@ -458,6 +458,17 @@
           因浏览器同源策略（CORS）限制，静态网页需通过反向代理与超星服务器通信：
         </p>
         <div class="space-y-3">
+          <label class="flex items-start gap-2.5 p-3 rounded-xl border cursor-pointer transition" :class="proxyMode === 'local' ? 'border-emerald-500 bg-emerald-50/50' : 'border-slate-200'">
+            <input type="radio" value="local" v-model="proxyMode" class="mt-0.5 text-emerald-600">
+            <div>
+              <div class="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                <span>⚡ 本地极速代理服务 (127.0.0.1:8787)</span>
+                <span class="text-[10px] bg-emerald-100 text-emerald-700 px-1.5 py-0.2 rounded font-mono">推荐/极速</span>
+              </div>
+              <div class="text-[11px] text-slate-500">已由后台在您电脑上启动，无任何拦截与跨域限制，支持直接输入账号密码登录。</div>
+            </div>
+          </label>
+
           <label class="flex items-start gap-2.5 p-3 rounded-xl border cursor-pointer transition" :class="proxyMode === 'corsproxy' ? 'border-blue-500 bg-blue-50/50' : 'border-slate-200'">
             <input type="radio" value="corsproxy" v-model="proxyMode" class="mt-0.5 text-blue-600">
             <div>
