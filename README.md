@@ -33,17 +33,13 @@
 
 由于浏览器的同源策略（CORS）与安全限制，前端纯静态网页向超星服务器发送请求时需要解决跨域限制：
 
-1. **默认免配置模式**：网页内置公开 CORS 代理节点（`corsproxy.io`），开箱即用，无需搭建任何服务。
-2. **专属 Cloudflare Worker 代理（强烈推荐）**：
-   - 速度更快、延迟极低、无请求频次限制，100% 独立稳定。
-   - 仓库内已内置现成的 [`cloudflare-worker.js`](./cloudflare-worker.js)。
-   - **30 秒部署步骤**：
-     1. 登录 [Cloudflare Dashboard](https://dash.cloudflare.com/) -> 选择 **Workers & Pages** -> 点击 **Create Application**。
-     2. 将本项目根目录下的 `cloudflare-worker.js` 代码全部复制并粘贴到 Worker 编辑器中，点击 **Save and Deploy**。
-     3. 复制生成的 Worker 地址（形如 `https://your-worker.your-subdomain.workers.dev`）。
-     4. 在签到网页右上角打开 **「⚙️ 网络设置」**，选择「自建 Cloudflare Worker 代理」并填入该域名，点击保存即可！
+1. **已内置专属 Cloudflare Worker 代理（默认开启，极速畅通）**：
+   - 您的专属节点域名：**`https://chaoxing.flowermuyi.me`**
+   - 享有独立纯净 IP 与 Cloudflare 全球边缘 CDN 加速，**账号密码登录 100% 畅通**，支持全部签到动作。
+2. **本地代理模式**：
+   - 双击运行项目中的 `启动随地大小签.bat` 即可启动本地代理（`127.0.0.1:8787`）。
 3. **插件直连模式**：
-   - 若电脑浏览器已安装 `Allow CORS` 等跨域扩展插件，可直接开启直连模式，0 代理延迟。
+   - 若电脑浏览器已安装 `Allow CORS` 等跨域扩展插件，也可直接开启直连模式。
 
 ---
 

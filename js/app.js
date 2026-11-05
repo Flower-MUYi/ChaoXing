@@ -56,9 +56,9 @@ const app = createApp({
     ]);
     const newPreset = reactive({ name: '', lat: '', lng: '' });
 
-    // 代理设置
-    const proxyMode = ref(localStorage.getItem('cx_proxy_mode') || 'corsproxy');
-    const customWorkerUrl = ref(localStorage.getItem('cx_worker_url') || '');
+    // 代理设置 - 默认使用用户专属的 Cloudflare Worker 代理
+    const proxyMode = ref(localStorage.getItem('cx_proxy_mode') || 'worker');
+    const customWorkerUrl = ref(localStorage.getItem('cx_worker_url') || 'https://chaoxing.flowermuyi.me');
     const testingProxy = ref(false);
 
     // 初始化 API 客户端

@@ -477,12 +477,15 @@
             </div>
           </label>
 
-          <label class="flex items-start gap-2.5 p-3 rounded-xl border cursor-pointer transition" :class="proxyMode === 'worker' ? 'border-blue-500 bg-blue-50/50' : 'border-slate-200'">
+          <label class="flex items-start gap-2.5 p-3 rounded-xl border cursor-pointer transition" :class="proxyMode === 'worker' ? 'border-blue-500 bg-blue-50/50 ring-2 ring-blue-400/20' : 'border-slate-200'">
             <input type="radio" value="worker" v-model="proxyMode" class="mt-0.5 text-blue-600">
             <div class="w-full">
-              <div class="text-xs font-bold text-slate-800">自建专属 Cloudflare Worker 代理 (推荐，速度快且稳定)</div>
-              <div class="text-[11px] text-slate-500 mb-1.5">完全免费，部署简单，无速率限制。</div>
-              <input v-if="proxyMode === 'worker'" v-model="customWorkerUrl" placeholder="https://your-worker.your-subdomain.workers.dev" class="w-full text-xs font-mono border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-blue-500 focus:outline-none">
+              <div class="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                <span>⚡ 专属 Cloudflare Worker 代理</span>
+                <span class="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.2 rounded font-mono">已配置/极速稳定</span>
+              </div>
+              <div class="text-[11px] text-slate-500 mb-1.5">已绑定您的专属域名，全球 CDN 加速，无限制畅通通信。</div>
+              <input v-if="proxyMode === 'worker'" v-model="customWorkerUrl" placeholder="https://chaoxing.flowermuyi.me" class="w-full text-xs font-mono border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-blue-500 focus:outline-none">
             </div>
           </label>
 
