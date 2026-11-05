@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>随地大小签 Web 版 - 学习通签到工具</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Vue 3 -->
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <!-- CryptoJS -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.2.0/crypto-js.min.js"></script>
+  <!-- jsQR 用于二维码识别 -->
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <!-- 本地样式与核心逻辑 -->
+  <link rel="stylesheet" href="css/style.css">
+  <script src="js/crypto-utils.js"></script>
+  <script src="js/cookie-jar.js"></script>
+  <script src="js/gesture-lock.js"></script>
+  <script src="js/cx-api.js"></script>
+</head>
+<body class="bg-slate-50 text-slate-800">
+  <div id="app" class="min-h-screen flex flex-col">
+    
+    <!-- 顶部导航栏 -->
+    <header class="sticky top-0 z-40 glass-nav shadow-sm">
+      <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <img src="favicon.svg" alt="Logo" class="w-9 h-9 rounded-xl shadow-md">
+          <div>
+            <h1 class="text-lg font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent leading-tight">随地大小签 Web</h1>
+            <p class="text-xs text-slate-500 hidden sm:block">Chaoxing Sign Faker 网页版</p>
+          </div>
+        </div>
+
+        <!-- 顶部右侧操作栏 -->
+        <div class="flex items-center gap-2 sm:gap-3">
+          <!-- 智能全局扫签按钮 -->
+          <button v-if="currentUser" @click="scanOngoingSigns" :disabled="isScanning" class="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 rounded-lg text-xs font-semibold border border-emerald-200 transition">
+            <span :class="{'animate-spin': isScanning}">🔄</span>
+            <span class="hidden sm:inline">{{ isScanning ? '正在扫描全课签到...' : '一键扫描签到' }}</span>
+            <span class="sm:hidden">{{ isScanning ? '扫描中' : '扫描' }}</span>
+          </button>
+
+          <!-- 代理设置按钮 -->
+          <button @click="showProxyModal = true" class="p-2 text-slate-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition" title="代理与网络设置">
+            ⚙️
+          </button>
+
+          <!-- 登录状态/用户信息 -->
+          <div v-if="currentUser" class="flex items-center gap-2 pl-2 border-l border-slate-200">
+            <img :src="currentUser.avatar" alt="Avatar" class="w-8 h-8 rounded-full border border-blue-200 object-cover" @error="onAvatarError">
+            <div class="hidden md:block text-left text-xs">
+              <div class="font-bold text-slate-800">{{ currentUser.name }}</div>
+              <div class="text-slate-400">UID: {{ currentUser.puid || currentUser.uid }}</div>
+            </div>
+            <button @click="logout" class="text-xs text-red-500 hover:text-red-700 px-2 py-1 rounded transition" title="退出当前账号">
+              退出
+            </button>
+          </div>
+          <button v-else @click="showLoginModal = true" class="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold shadow-sm transition">
+            登录账号
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- 主体区域 -->
+    <main class="flex-1 max-w-6xl w-full mx-auto px-4 py-6">
+      
+      <!-- 未登录提示卡片 -->
+      <div v-if="!currentUser" class="max-w-md mx-auto mt-12 glass-panel p-8 text-center space-y-6">
+        <div class="w-16 h-16 bg-blue-100 text-blue-600 rounded-2xl flex items-center justify-center mx-auto text-3xl shadow-inner">
+          📱
+        </div>
+        <div>
+          <h2 class="text-xl font-bold text-slate-800">欢迎使用 随地大小签 Web</h2>
+          <p class="text-xs text-slate-500 mt-2">支持多账号一键签到、位置模拟、二维码解析、手势连线、签到码等功能</p>
+        </div>
+        <div class="space-y-3">
+          <button @click="showLoginModal = true" class="w-full py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-medium rounded-xl shadow-md transition">
+            立即登录学习通
+          </button>
+          <button @click="showCookieImportModal = true" class="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium rounded-xl transition">
+            通过 Cookie 登录 / 快速导入
+          </button>
+        </div>
+
+        <div class="text-xs text-slate-400 text-left bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-1">
+          <div class="font-semibold text-slate-600">💡 提示与说明:</div>
+          <div>• 本程序完全运行在您本地浏览器中，所有密码和 Cookie 均保存在本地 localStorage，安全无虞。</div>
+          <div>• 静态网页由于浏览器 CORS 跨域安全策略，默认通过代理节点转发请求，您也可以自建专属 Cloudflare Worker 代理。</div>
+        </div>
+      </div>
+
+      <!-- 已登录主界面 -->
+      <div v-else class="space-y-6">
+        
+        <!-- 顶部功能便签条 -->
+        <div class="flex flex-wrap items-center justify-between gap-3 bg-white/70 backdrop-blur p-4 rounded-2xl border border-slate-200/80 shadow-sm">
+          <div class="flex items-center gap-3">
+            <span class="text-sm font-semibold text-slate-700">📌 快捷操作：</span>
+            <button @click="openQuickSignModal" class="px-3 py-1 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-lg text-xs font-medium transition">
+              输入活动ID签到
+            </button>
+            <button @click="openScanQRModal" class="px-3 py-1 bg-purple-50 text-purple-600 hover:bg-purple-100 rounded-lg text-xs font-medium transition">
+              扫码 / 粘贴二维码
+            </button>
+            <button @click="showLocationPresetModal = true" class="px-3 py-1 bg-amber-50 text-amber-600 hover:bg-amber-100 rounded-lg text-xs font-medium transition">
+              预设位置管理
+            </button>
+          </div>
+
+          <!-- 多账号切换器 -->
+          <div class="flex items-center gap-2">
+            <span class="text-xs text-slate-500 hidden sm:inline">账号切换:</span>
+            <select v-model="selectedPhone" @change="switchAccount(selectedPhone)" class="text-xs bg-slate-100 border border-slate-300 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500">
+              <option v-for="acc in savedAccounts" :key="acc.phoneNumber" :value="acc.phoneNumber">
+                {{ acc.name || '未知' }} ({{ acc.phoneNumber }})
+              </option>
+            </select>
+            <button @click="showLoginModal = true" class="text-xs px-2 py-1 bg-slate-200 hover:bg-slate-300 rounded text-slate-700 transition" title="添加新账号用于代签">
+              + 添加代签
+            </button>
+          </div>
+        </div>
+
+        <!-- 发现的正在进行中的签到提醒横幅 -->
+        <div v-if="ongoingSigns.length > 0" class="bg-gradient-to-r from-emerald-500 to-teal-600 text-white p-5 rounded-2xl shadow-lg space-y-3">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2 text-base font-bold">
+              <span class="relative flex h-3 w-3">
+                <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
+                <span class="relative inline-flex rounded-full h-3 w-3 bg-white"></span>
+              </span>
+              正在进行的签到活动 ({{ ongoingSigns.length }})
+            </div>
+            <button @click="ongoingSigns = []" class="text-xs text-white/80 hover:text-white">✕ 关闭</button>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div v-for="act in ongoingSigns" :key="act.id" class="bg-white/10 backdrop-blur-sm border border-white/20 p-3.5 rounded-xl flex items-center justify-between">
+              <div>
+                <div class="font-bold text-sm">{{ act.courseName }} - {{ act.name }}</div>
+                <div class="text-xs text-white/80 mt-0.5">类型: {{ act.typeName }} | 教师: {{ act.teacher }}</div>
+              </div>
+              <button @click="openSignModal(act)" class="px-3.5 py-1.5 bg-white text-emerald-700 hover:bg-emerald-50 font-bold text-xs rounded-lg shadow transition">
+                去签到
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 课程列表板块 -->
+        <div class="space-y-4">
+          <div class="flex items-center justify-between">
+            <h2 class="text-base font-bold text-slate-800 flex items-center gap-2">
+              📚 我的课程与班级 ({{ courses.length }})
+            </h2>
+            <button @click="loadCourses" :disabled="loadingCourses" class="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1">
+              <span :class="{'animate-spin': loadingCourses}">🔄</span> 刷新课程
+            </button>
+          </div>
+
+          <!-- 课程卡片网格 -->
+          <div v-if="courses.length > 0" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div v-for="c in courses" :key="c.classId" @click="selectCourse(c)" class="glass-panel p-4 hover-card cursor-pointer flex flex-col justify-between border-slate-200">
+              <div class="flex gap-3">
+                <img :src="c.cover" alt="Course" class="w-16 h-16 rounded-xl object-cover border border-slate-100 flex-shrink-0">
+                <div class="flex-1 min-w-0">
+                  <h3 class="font-bold text-sm text-slate-800 truncate" :title="c.name">{{ c.name }}</h3>
+                  <p class="text-xs text-slate-500 mt-1 truncate">教师: {{ c.teacher }}</p>
+                  <p class="text-xs text-slate-400 mt-0.5 truncate">班级ID: {{ c.classId }}</p>
+                </div>
+              </div>
+              <div class="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-blue-600 font-medium">
+                <span>查看该课程签到活动</span>
+                <span>➔</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 加载中或空状态 -->
+          <div v-else-if="loadingCourses" class="text-center py-16 text-slate-400 space-y-3">
+            <div class="animate-spin inline-block text-3xl">⌛</div>
+            <div class="text-sm">正在加载您的课程列表...</div>
+          </div>
+          <div v-else class="text-center py-16 text-slate-400 space-y-2">
+            <div class="text-3xl">📭</div>
+            <div class="text-sm">未找到课程数据，点击刷新试试</div>
+          </div>
+        </div>
+
+      </div>
+
+    </main>
+
+    <!-- 底部版权与说明 -->
+    <footer class="mt-auto py-6 border-t border-slate-200/80 text-center text-xs text-slate-400">
+      <div class="max-w-6xl mx-auto px-4 space-y-1">
+        <div>ChaoxingSignFaker Web © 2026 | 基于 aquamarine5 开源项目制作</div>
+        <div>仅供网络通信与技术学习交流使用，请勿用于违反纪律及违规用途</div>
+      </div>
+    </footer>
+
+    <!-- ================= 模态弹窗区域 ================= -->
+
+    <!-- 1. 登录弹窗 -->
+    <div v-if="showLoginModal" class="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
+      <div class="glass-panel max-w-sm w-full p-6 space-y-4 shadow-2xl">
+        <div class="flex items-center justify-between">
+          <h3 class="font-bold text-base text-slate-800">登录学习通账号</h3>
+          <button @click="showLoginModal = false" class="text-slate-400 hover:text-slate-600">✕</button>
+        </div>
+        <div class="space-y-3">
+          <div>
+            <label class="block text-xs font-medium text-slate-600 mb-1">手机号</label>
+            <input v-model="loginForm.phone" type="text" placeholder="输入学习通绑定手机号" class="w-full text-sm border border-slate-300 rounded-xl px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:outline-none">
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-600 mb-1">密码</label>
+            <input v-model="loginForm.password" type="password" placeholder="输入学习通登录密码" class="w-full text-sm border border-slate-300 rounded-xl px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:outline-none">
+          </div>
+        </div>
+        <div class="pt-2">
+          <button @click="handleLogin" :disabled="isLoggingIn" class="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-medium text-sm rounded-xl shadow transition">
+            {{ isLoggingIn ? '正在安全登录中...' : '立即登录' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2. Cookie 导入弹窗 -->
+    <div v-if="showCookieImportModal" class="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
+      <div class="glass-panel max-w-md w-full p-6 space-y-4 shadow-2xl">
+        <div class="flex items-center justify-between">
+          <h3 class="font-bold text-base text-slate-800">直接导入 Cookie 登录</h3>
+          <button @click="showCookieImportModal = false" class="text-slate-400 hover:text-slate-600">✕</button>
+        </div>
+        <p class="text-xs text-slate-500">粘贴您在电脑浏览器 F12 中抓包的超星 Cookie (包含 _uid, vc3, _d 等)：</p>
+        <textarea v-model="cookieInput" rows="4" placeholder="_uid=123456; vc3=xxxxxx; _d=yyyyyy;" class="w-full text-xs font-mono border border-slate-300 rounded-xl p-3 focus:ring-2 focus:ring-blue-500 focus:outline-none"></textarea>
+        <div class="flex justify-end gap-2">
+          <button @click="showCookieImportModal = false" class="px-4 py-2 text-xs text-slate-600 hover:bg-slate-100 rounded-lg">取消</button>
+          <button @click="handleImportCookie" class="px-4 py-2 text-xs bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700">导入并验证</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 3. 课程签到活动列表弹窗 -->
+    <div v-if="selectedCourseActivities" class="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
+      <div class="glass-panel max-w-2xl w-full max-h-[85vh] flex flex-col p-6 shadow-2xl">
+        <div class="flex items-center justify-between pb-3 border-b border-slate-200">
+          <div>
+            <h3 class="font-bold text-base text-slate-800">{{ currentSelectedCourse?.name }}</h3>
+            <p class="text-xs text-slate-500">签到活动列表 (共 {{ selectedCourseActivities.length }} 项)</p>
+          </div>
+          <button @click="selectedCourseActivities = null" class="text-slate-400 hover:text-slate-600 text-lg">✕</button>
+        </div>
+
+        <div class="flex-1 overflow-y-auto py-4 space-y-3">
+          <div v-if="selectedCourseActivities.length === 0" class="text-center py-12 text-slate-400">
+            该课程暂无历史或进行中的签到活动
+          </div>
+          <div v-for="act in selectedCourseActivities" :key="act.id" class="p-4 rounded-xl border flex items-center justify-between transition" :class="act.isOver ? 'bg-slate-50/80 border-slate-200 text-slate-500' : 'bg-blue-50/60 border-blue-200 text-slate-800'">
+            <div class="space-y-1">
+              <div class="flex items-center gap-2">
+                <span class="font-bold text-sm">{{ act.name }}</span>
+                <span class="text-[10px] px-2 py-0.5 rounded-full font-semibold" :class="act.isOver ? 'bg-slate-200 text-slate-600' : 'bg-emerald-500 text-white badge-live'">
+                  {{ act.isOver ? '已结束' : '进行中' }}
+                </span>
+                <span class="text-xs px-2 py-0.5 rounded bg-slate-100 text-slate-600 font-mono">
+                  {{ act.typeName }}
+                </span>
+              </div>
+              <div class="text-xs text-slate-400">
+                开始时间: {{ formatTime(act.startTime) }} {{ act.endTime ? '| 截止: ' + formatTime(act.endTime) : '' }}
+              </div>
+            </div>
+
+            <div>
+              <button @click="openSignModal(act)" class="px-4 py-2 font-semibold text-xs rounded-xl shadow-sm transition" :class="act.isOver ? 'bg-slate-200 hover:bg-slate-300 text-slate-700' : 'bg-blue-600 hover:bg-blue-700 text-white'">
+                {{ act.isOver ? '补签/查看' : '立即签到' }}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 4. 签到执行对话框 (支持位置、二维码、手势、签到码、普通) -->
+    <div v-if="currentSignActivity" class="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
+      <div class="glass-panel max-w-lg w-full max-h-[90vh] overflow-y-auto p-6 space-y-5 shadow-2xl">
+        <div class="flex items-center justify-between pb-3 border-b border-slate-200">
+          <div>
+            <h3 class="font-bold text-base text-slate-800">
+              {{ currentSignActivity.name }} ({{ currentSignActivity.typeName }})
+            </h3>
+            <p class="text-xs text-slate-400">活动 ID: {{ currentSignActivity.activeId }}</p>
+          </div>
+          <button @click="currentSignActivity = null" class="text-slate-400 hover:text-slate-600 text-lg">✕</button>
+        </div>
+
+        <!-- 针对不同签到类型的表单输入 -->
+        
+        <!-- A. 位置签到 -->
+        <div v-if="currentSignActivity.otherId === '4'" class="space-y-4">
+          <div class="bg-blue-50 p-3 rounded-xl text-xs text-blue-700 space-y-1">
+            <div class="font-bold">📍 位置签到设置</div>
+            <div>已开启防查微抖动（每次提交坐标随机浮动约 5 米，防止同一地点被判定异常）。</div>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1">签到地点名称</label>
+            <input v-model="signForm.address" type="text" placeholder="例如：图书馆主楼一楼 / 综合教学楼" class="w-full text-xs border border-slate-300 rounded-xl px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:outline-none">
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 mb-1">纬度 (Latitude)</label>
+              <input v-model="signForm.latitude" type="number" step="0.000001" placeholder="如 30.123456" class="w-full text-xs border border-slate-300 rounded-xl px-3 py-2 font-mono">
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 mb-1">经度 (Longitude)</label>
+              <input v-model="signForm.longitude" type="number" step="0.000001" placeholder="如 120.123456" class="w-full text-xs border border-slate-300 rounded-xl px-3 py-2 font-mono">
+            </div>
+          </div>
+          <div class="flex gap-2">
+            <button @click="fetchCurrentGPS" class="flex-1 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs rounded-lg transition">
+              🧭 获取浏览器当前位置
+            </button>
+            <button @click="applyPresetLocation" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs rounded-lg transition">
+              从预设填入
+            </button>
+          </div>
+        </div>
+
+        <!-- B. 二维码签到 -->
+        <div v-else-if="currentSignActivity.otherId === '2'" class="space-y-4">
+          <div class="bg-purple-50 p-3 rounded-xl text-xs text-purple-700 space-y-1">
+            <div class="font-bold">📷 二维码签到解析</div>
+            <div>支持直接粘贴二维码内容（以 SIGNIN: 开头或包含 enc 的网址），或上传二维码截图自动识别。</div>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1">二维码识别结果 / enc 参数</label>
+            <textarea v-model="signForm.qrContent" @input="onQRInput" rows="3" placeholder="粘贴二维码扫描内容（例如：SIGNIN:id=...&enc=ABC...）" class="w-full text-xs font-mono border border-slate-300 rounded-xl p-2.5 focus:ring-2 focus:ring-purple-500 focus:outline-none"></textarea>
+          </div>
+          <div class="flex items-center gap-2">
+            <label class="flex-1 text-center py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs rounded-xl cursor-pointer border border-dashed border-slate-300 transition">
+              <span>🖼️ 上传二维码图片识别</span>
+              <input type="file" accept="image/*" class="hidden" @change="handleQRImageUpload">
+            </label>
+          </div>
+          <div v-if="signForm.qrParsedEnc" class="text-xs bg-emerald-50 text-emerald-700 p-2.5 rounded-xl border border-emerald-200 font-mono">
+            ✓ 成功解析 enc: {{ signForm.qrParsedEnc }}
+          </div>
+        </div>
+
+        <!-- C. 手势签到 -->
+        <div v-else-if="currentSignActivity.otherId === '3'" class="space-y-4 text-center">
+          <div class="text-xs text-slate-500">请在下方九宫格中滑动连接手势图案：</div>
+          <div class="inline-block p-2 bg-white rounded-2xl shadow-inner border border-slate-200 gesture-canvas-wrapper">
+            <canvas id="gestureCanvas" width="260" height="260" class="cursor-crosshair"></canvas>
+          </div>
+          <div class="flex items-center justify-center gap-3">
+            <div class="text-xs text-slate-600 font-medium">当前手势序列: <span class="font-mono font-bold text-blue-600 text-sm">{{ signForm.gestureCode || '未绘制' }}</span></div>
+            <button @click="resetGesture" class="text-xs text-slate-400 hover:text-slate-600">重置</button>
+          </div>
+        </div>
+
+        <!-- D. 签到码签到 -->
+        <div v-else-if="currentSignActivity.otherId === '5'" class="space-y-4">
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1">输入教师发布的签到码</label>
+            <input v-model="signForm.signCode" type="text" placeholder="输入数字或文字签到码" class="w-full text-sm font-mono border border-slate-300 rounded-xl px-3 py-2 text-center text-lg tracking-widest focus:ring-2 focus:ring-blue-500 focus:outline-none">
+          </div>
+        </div>
+
+        <!-- E. 普通/拍照签到 -->
+        <div v-else class="space-y-3">
+          <p class="text-xs text-slate-500">该活动为普通签到或拍照签到，可直接一键签到。</p>
+        </div>
+
+        <!-- 提交签到操作按钮 -->
+        <div class="pt-4 border-t border-slate-100 flex items-center justify-between">
+          <button @click="currentSignActivity = null" class="px-4 py-2 text-xs text-slate-500 hover:bg-slate-100 rounded-xl transition">
+            取消
+          </button>
+          <button @click="executeSign" :disabled="isSubmittingSign" class="px-6 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold text-xs rounded-xl shadow-lg transition">
+            {{ isSubmittingSign ? '正在提交签到...' : '立即提交签到' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 5. 快捷输入活动ID弹窗 -->
+    <div v-if="showQuickSignModal" class="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
+      <div class="glass-panel max-w-sm w-full p-6 space-y-4 shadow-2xl">
+        <div class="flex items-center justify-between">
+          <h3 class="font-bold text-base text-slate-800">输入活动 ID 签到</h3>
+          <button @click="showQuickSignModal = false" class="text-slate-400 hover:text-slate-600">✕</button>
+        </div>
+        <p class="text-xs text-slate-500">如已知教师发布的 activeId，可直接输入并拉取详情签到：</p>
+        <input v-model="quickSignActiveId" type="text" placeholder="输入 activeId" class="w-full text-sm font-mono border border-slate-300 rounded-xl px-3 py-2">
+        <button @click="handleQuickSignFetch" class="w-full py-2 bg-blue-600 text-white font-medium text-xs rounded-xl hover:bg-blue-700 transition">
+          获取活动并前往签到
+        </button>
+      </div>
+    </div>
+
+    <!-- 6. 预设位置管理弹窗 -->
+    <div v-if="showLocationPresetModal" class="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
+      <div class="glass-panel max-w-md w-full p-6 space-y-4 shadow-2xl">
+        <div class="flex items-center justify-between">
+          <h3 class="font-bold text-base text-slate-800">常用预设位置</h3>
+          <button @click="showLocationPresetModal = false" class="text-slate-400 hover:text-slate-600">✕</button>
+        </div>
+        <div class="space-y-2 max-h-60 overflow-y-auto">
+          <div v-for="(loc, idx) in presetLocations" :key="idx" class="p-3 bg-slate-50 hover:bg-blue-50 rounded-xl border border-slate-200 flex items-center justify-between transition">
+            <div>
+              <div class="font-bold text-xs text-slate-800">{{ loc.name }}</div>
+              <div class="text-[10px] text-slate-400 font-mono">{{ loc.lat }}, {{ loc.lng }}</div>
+            </div>
+            <div class="flex items-center gap-2">
+              <button @click="usePresetLocation(loc)" class="px-2.5 py-1 bg-blue-600 text-white text-[11px] font-medium rounded-lg hover:bg-blue-700">使用</button>
+              <button @click="deletePresetLocation(idx)" class="text-slate-400 hover:text-red-500 text-xs">✕</button>
+            </div>
+          </div>
+        </div>
+        <div class="pt-2 border-t border-slate-100 space-y-2">
+          <div class="text-xs font-semibold text-slate-700">添加新位置:</div>
+          <div class="grid grid-cols-3 gap-2">
+            <input v-model="newPreset.name" placeholder="名称" class="text-xs border border-slate-300 rounded-lg p-1.5">
+            <input v-model="newPreset.lat" placeholder="纬度" class="text-xs border border-slate-300 rounded-lg p-1.5">
+            <input v-model="newPreset.lng" placeholder="经度" class="text-xs border border-slate-300 rounded-lg p-1.5">
+          </div>
+          <button @click="addPresetLocation" class="w-full py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-800 text-xs font-medium rounded-lg transition">
+            + 保存到预设列表
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 7. 代理与网络设置弹窗 -->
+    <div v-if="showProxyModal" class="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
+      <div class="glass-panel max-w-lg w-full max-h-[85vh] overflow-y-auto p-6 space-y-4 shadow-2xl">
+        <div class="flex items-center justify-between pb-2 border-b border-slate-200">
+          <h3 class="font-bold text-base text-slate-800">网络与 CORS 代理设置</h3>
+          <button @click="showProxyModal = false" class="text-slate-400 hover:text-slate-600">✕</button>
+        </div>
+        <p class="text-xs text-slate-500">
+          因浏览器同源策略（CORS）限制，静态网页需通过反向代理与超星服务器通信：
+        </p>
+        <div class="space-y-3">
+          <label class="flex items-start gap-2.5 p-3 rounded-xl border cursor-pointer transition" :class="proxyMode === 'corsproxy' ? 'border-blue-500 bg-blue-50/50' : 'border-slate-200'">
+            <input type="radio" value="corsproxy" v-model="proxyMode" class="mt-0.5 text-blue-600">
+            <div>
+              <div class="text-xs font-bold text-slate-800">公用免配置代理 (corsproxy.io)</div>
+              <div class="text-[11px] text-slate-500">开箱即用，免任何搭建操作，适合日常快捷签到。</div>
+            </div>
+          </label>
+
+          <label class="flex items-start gap-2.5 p-3 rounded-xl border cursor-pointer transition" :class="proxyMode === 'worker' ? 'border-blue-500 bg-blue-50/50' : 'border-slate-200'">
+            <input type="radio" value="worker" v-model="proxyMode" class="mt-0.5 text-blue-600">
+            <div class="w-full">
+              <div class="text-xs font-bold text-slate-800">自建专属 Cloudflare Worker 代理 (推荐，速度快且稳定)</div>
+              <div class="text-[11px] text-slate-500 mb-1.5">完全免费，部署简单，无速率限制。</div>
+              <input v-if="proxyMode === 'worker'" v-model="customWorkerUrl" placeholder="https://your-worker.your-subdomain.workers.dev" class="w-full text-xs font-mono border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-blue-500 focus:outline-none">
+            </div>
+          </label>
+
+          <label class="flex items-start gap-2.5 p-3 rounded-xl border cursor-pointer transition" :class="proxyMode === 'direct' ? 'border-blue-500 bg-blue-50/50' : 'border-slate-200'">
+            <input type="radio" value="direct" v-model="proxyMode" class="mt-0.5 text-blue-600">
+            <div>
+              <div class="text-xs font-bold text-slate-800">直连模式 (需浏览器安装 CORS 扩展)</div>
+              <div class="text-[11px] text-slate-500">适合在 Chrome/Edge 中已启用跨域允许插件的用户。</div>
+            </div>
+          </label>
+        </div>
+
+        <div class="flex items-center justify-between pt-2">
+          <button @click="testProxyConnection" :disabled="testingProxy" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium rounded-lg transition">
+            {{ testingProxy ? '正在测试...' : '⚡ 测试当前代理连通性' }}
+          </button>
+          <button @click="saveProxySettings" class="px-5 py-2 bg-blue-600 text-white font-medium text-xs rounded-xl hover:bg-blue-700 shadow">
+            保存设置
+          </button>
+        </div>
+
+        <div class="pt-3 border-t border-slate-100 text-xs text-slate-400">
+          <div>💡 专属 Cloudflare Worker 搭建指南已内置在项目 <code>cloudflare-worker.js</code> 中。</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- 引入应用入口 app.js -->
+  <script src="js/app.js"></script>
+</body>
+</html>
