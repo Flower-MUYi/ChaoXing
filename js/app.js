@@ -56,9 +56,20 @@ const app = createApp({
     ]);
     const newPreset = reactive({ name: '', lat: '', lng: '' });
 
-    // 代理设置 - 默认使用用户专属的 Cloudflare Worker 代理
-    const proxyMode = ref(localStorage.getItem('cx_proxy_mode') || 'worker');
-    const customWorkerUrl = ref(localStorage.getItem('cx_worker_url') || 'https://chaoxing.flowermuyi.me');
+    // 强制迁移旧缓存中的失效公用代理到用户专属 Worker
+    let currentSavedProxy = localStorage.getItem('cx_proxy_mode');
+    if (!currentSavedProxy || currentSavedProxy === 'corsproxy') {
+      currentSavedProxy = 'worker';
+      localStorage.setItem('cx_proxy_mode', 'worker');
+    }
+    let currentWorkerUrl = localStorage.getItem('cx_worker_url');
+    if (!currentWorkerUrl || currentWorkerUrl.includes('your-worker')) {
+      currentWorkerUrl = 'https://chaoxing.flowermuyi.me';
+      localStorage.setItem('cx_worker_url', currentWorkerUrl);
+    }
+
+    const proxyMode = ref(currentSavedProxy);
+    const customWorkerUrl = ref(currentWorkerUrl);
     const testingProxy = ref(false);
 
     // 初始化 API 客户端
