@@ -93,22 +93,37 @@ class ChaoxingApi {
     formData.append('independentId', '0');
     formData.append('independentNameId', '0');
 
-    const resp = await this.request('https://passport2.chaoxing.com/fanyalogin', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded'
-      },
-      body: formData.toString()
-    });
+    let respText = '';
+    try {
+      const resp = await this.request('https://passport2.chaoxing.com/fanyalogin', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded'
+        },
+        body: formData.toString()
+      });
 
-    const data = await resp.json();
-    if (!data.status) {
-      throw new Error(data.msg2 || data.msg || '登录失败，请检查账号密码');
+      respText = await resp.text();
+      let data;
+      try {
+        data = JSON.parse(respText);
+      } catch (parseErr) {
+        if (resp.status === 403 || respText.includes('Attention Required') || respText.includes('blocked')) {
+          throw new Error('当前公用代理节点被拦截 (Cloudflare 403)。建议在设置中填入自建 Cloudflare Worker 代理，或使用下方的【Cookie 登录】直接进入！');
+        }
+        throw new Error(`代理节点返回异常 (${resp.status}): ${respText.substring(0, 100)}`);
+      }
+
+      if (!data.status) {
+        throw new Error(data.msg2 || data.msg || '超星返回: 账号或密码错误');
+      }
+
+      // 登录成功后获取用户信息
+      const userInfo = await this.getUserInfo();
+      return userInfo;
+    } catch (err) {
+      throw err;
     }
-
-    // 登录成功后获取用户信息
-    const userInfo = await this.getUserInfo();
-    return userInfo;
   }
 
   /**

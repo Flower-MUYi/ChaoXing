@@ -83,11 +83,11 @@
           <p class="text-xs text-slate-500 mt-2">支持多账号一键签到、位置模拟、二维码解析、手势连线、签到码等功能</p>
         </div>
         <div class="space-y-3">
-          <button @click="showLoginModal = true" class="w-full py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-medium rounded-xl shadow-md transition">
-            立即登录学习通
+          <button @click="showCookieImportModal = true" class="w-full py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-medium rounded-xl shadow-md transition flex items-center justify-center gap-1.5">
+            <span>🍪</span> 推荐：直接通过 Cookie 极速登录 (免代理免拦截)
           </button>
-          <button @click="showCookieImportModal = true" class="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium rounded-xl transition">
-            通过 Cookie 登录 / 快速导入
+          <button @click="showLoginModal = true" class="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium rounded-xl transition">
+            使用账号密码登录 (需配合自建代理)
           </button>
         </div>
 
@@ -241,7 +241,12 @@
           <h3 class="font-bold text-base text-slate-800">直接导入 Cookie 登录</h3>
           <button @click="showCookieImportModal = false" class="text-slate-400 hover:text-slate-600">✕</button>
         </div>
-        <p class="text-xs text-slate-500">粘贴您在电脑浏览器 F12 中抓包的超星 Cookie (包含 _uid, vc3, _d 等)：</p>
+        <div class="bg-blue-50 p-3 rounded-xl text-xs text-blue-700 space-y-1.5">
+          <div class="font-bold">💡 如何 10 秒获取学习通 Cookie：</div>
+          <div>1. 在电脑浏览器打开 <a href="https://i.chaoxing.com" target="_blank" class="underline font-semibold text-blue-800">学习通官网 (i.chaoxing.com)</a> 扫码登录</div>
+          <div>2. 在该网页按 <kbd class="px-1.5 py-0.5 bg-white border border-blue-200 rounded font-mono">F12</kbd> 打开开发者工具，切换到 <b>Console</b> (控制台)</div>
+          <div>3. 输入代码 <code class="bg-white px-1.5 py-0.5 rounded font-mono select-all">document.cookie</code> 按回车，复制输出的整段内容粘贴到下方即可！</div>
+        </div>
         <textarea v-model="cookieInput" rows="4" placeholder="_uid=123456; vc3=xxxxxx; _d=yyyyyy;" class="w-full text-xs font-mono border border-slate-300 rounded-xl p-3 focus:ring-2 focus:ring-blue-500 focus:outline-none"></textarea>
         <div class="flex justify-end gap-2">
           <button @click="showCookieImportModal = false" class="px-4 py-2 text-xs text-slate-600 hover:bg-slate-100 rounded-lg">取消</button>
