@@ -44,8 +44,8 @@
           <!-- 智能全局扫签按钮 -->
           <button v-if="currentUser" @click="scanOngoingSigns" :disabled="isScanning" class="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 rounded-lg text-xs font-semibold border border-emerald-200 transition">
             <span :class="{'animate-spin': isScanning}">🔄</span>
-            <span class="hidden sm:inline">{{ isScanning ? '正在扫描全课签到...' : '一键扫描签到' }}</span>
-            <span class="sm:hidden">{{ isScanning ? '扫描中' : '扫描' }}</span>
+            <span class="hidden sm:inline">{{ isScanning ? ('正在扫描 (' + (scanProgressText || '...') + ')') : '一键扫描签到' }}</span>
+            <span class="sm:hidden">{{ isScanning ? scanProgressText : '扫描' }}</span>
           </button>
 
           <!-- 代理设置按钮 -->
@@ -240,18 +240,21 @@
 
         <!-- 课程列表板块 -->
         <div class="space-y-4">
-          <div class="flex items-center justify-between">
+          <div class="flex flex-wrap items-center justify-between gap-3">
             <h2 class="text-base font-bold text-slate-800 flex items-center gap-2">
-              📚 我的课程与班级 ({{ courses.length }})
+              📚 我的课程与班级 (共 {{ courses.length }} 门)
             </h2>
-            <button @click="loadCourses" :disabled="loadingCourses" class="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1">
-              <span :class="{'animate-spin': loadingCourses}">🔄</span> 刷新课程
-            </button>
+            <div class="flex items-center gap-2">
+              <input v-model="courseSearchKeyword" type="text" placeholder="🔍 快速搜索课程或教师..." class="text-xs bg-white border border-slate-300 rounded-xl px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 w-44 sm:w-60 shadow-sm">
+              <button @click="loadCourses" :disabled="loadingCourses" class="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1 px-2.5 py-1.5 bg-blue-50 hover:bg-blue-100 rounded-lg transition">
+                <span :class="{'animate-spin': loadingCourses}">🔄</span> 刷新
+              </button>
+            </div>
           </div>
 
           <!-- 课程卡片网格 -->
-          <div v-if="courses.length > 0" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            <div v-for="c in courses" :key="c.classId" @click="selectCourse(c)" class="glass-panel p-4 hover-card cursor-pointer flex flex-col justify-between border-slate-200">
+          <div v-if="filteredCourses.length > 0" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div v-for="c in filteredCourses" :key="c.classId" @click="selectCourse(c)" class="glass-panel p-4 hover-card cursor-pointer flex flex-col justify-between border-slate-200 active:scale-[0.99] transition">
               <div class="flex gap-3">
                 <img :src="c.cover" alt="Course" class="w-16 h-16 rounded-xl object-cover border border-slate-100 flex-shrink-0">
                 <div class="flex-1 min-w-0">
@@ -261,7 +264,7 @@
                 </div>
               </div>
               <div class="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-blue-600 font-medium">
-                <span>查看该课程签到活动</span>
+                <span>查看签到活动</span>
                 <span>➔</span>
               </div>
             </div>
@@ -354,10 +357,15 @@
         </div>
 
         <div class="flex-1 overflow-y-auto py-4 space-y-3">
-          <div v-if="selectedCourseActivities.length === 0" class="text-center py-12 text-slate-400">
-            该课程暂无历史或进行中的签到活动
+          <div v-if="loadingActivities" class="text-center py-16 text-slate-400 space-y-3">
+            <div class="animate-spin inline-block text-3xl">⌛</div>
+            <div class="text-xs">正在实时拉取该课程的签到活动...</div>
           </div>
-          <div v-for="act in selectedCourseActivities" :key="act.id" class="p-4 rounded-xl border flex items-center justify-between transition" :class="act.isOver ? 'bg-slate-50/80 border-slate-200 text-slate-500' : 'bg-blue-50/60 border-blue-200 text-slate-800'">
+          <div v-else-if="selectedCourseActivities.length === 0" class="text-center py-16 text-slate-400 space-y-1">
+            <div class="text-2xl">📭</div>
+            <div class="text-xs">该课程暂无历史或正在进行的签到活动</div>
+          </div>
+          <div v-else v-for="act in selectedCourseActivities" :key="act.id" class="p-4 rounded-xl border flex items-center justify-between transition" :class="act.isOver ? 'bg-slate-50/80 border-slate-200 text-slate-500' : 'bg-blue-50/60 border-blue-200 text-slate-800'">
             <div class="space-y-1">
               <div class="flex items-center gap-2">
                 <span class="font-bold text-sm">{{ act.name }}</span>

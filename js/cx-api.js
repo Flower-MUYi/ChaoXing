@@ -230,29 +230,42 @@ class ChaoxingApi {
   }
 
   /**
-   * 智能全量扫描所有课程正在进行的签到活动
+   * 智能并发全量扫描所有课程正在进行的签到活动 (8 并发极速池)
    */
   async scanAllActiveSigns(courses, progressCallback = null) {
     const activeList = [];
-    for (let i = 0; i < courses.length; i++) {
-      const course = courses[i];
-      if (progressCallback) {
-        progressCallback(i + 1, courses.length, course.name);
-      }
-      try {
-        const { activities } = await this.getActivities(course.courseId, course.classId);
-        const ongoing = activities.filter(a => !a.isOver);
-        ongoing.forEach(act => {
-          activeList.push({
-            ...act,
-            courseName: course.name,
-            teacher: course.teacher
+    const concurrency = 8;
+    let completed = 0;
+    const total = courses.length;
+
+    let index = 0;
+    const workers = Array.from({ length: concurrency }, async () => {
+      while (index < courses.length) {
+        const curIdx = index++;
+        const course = courses[curIdx];
+
+        try {
+          const { activities } = await this.getActivities(course.courseId, course.classId);
+          const ongoing = activities.filter(a => !a.isOver);
+          ongoing.forEach(act => {
+            activeList.push({
+              ...act,
+              courseName: course.name,
+              teacher: course.teacher
+            });
           });
-        });
-      } catch (e) {
-        console.warn(`Scan error for course ${course.name}`, e);
+        } catch (e) {
+          console.warn(`Scan error for course ${course.name}`, e);
+        } finally {
+          completed++;
+          if (progressCallback) {
+            progressCallback(completed, total, course.name);
+          }
+        }
       }
-    }
+    });
+
+    await Promise.all(workers);
     return activeList;
   }
 

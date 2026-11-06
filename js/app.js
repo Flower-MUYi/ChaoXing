@@ -163,8 +163,11 @@ const app = createApp({
     // 课程与签到弹窗
     const currentSelectedCourse = ref(null);
     const selectedCourseActivities = ref(null);
+    const loadingActivities = ref(false);
     const currentSignActivity = ref(null);
     const isSubmittingSign = ref(false);
+    const courseSearchKeyword = ref('');
+    const scanProgressText = ref('');
 
     const signForm = reactive({
       address: '综合教学楼',
@@ -358,18 +361,23 @@ const app = createApp({
       }
     }
 
-    // 查看单个课程的签到活动
+    // 查看单个课程的签到活动 (即点即开，绝无延迟)
     async function selectCourse(course) {
       currentSelectedCourse.value = course;
+      selectedCourseActivities.value = [];
+      loadingActivities.value = true;
+
       try {
         const { activities } = await api.getActivities(course.courseId, course.classId);
         selectedCourseActivities.value = activities;
       } catch (e) {
         alert(`获取课程签到活动失败: ${e.message}`);
+      } finally {
+        loadingActivities.value = false;
       }
     }
 
-    // 智能全局扫描所有进行中的签到
+    // 智能全局扫描所有进行中的签到 (8 并发极速流)
     async function scanOngoingSigns() {
       if (courses.value.length === 0) {
         await loadCourses();
@@ -380,11 +388,15 @@ const app = createApp({
       }
 
       isScanning.value = true;
+      scanProgressText.value = `0/${courses.value.length}`;
+
       try {
-        const list = await api.scanAllActiveSigns(courses.value);
+        const list = await api.scanAllActiveSigns(courses.value, (done, total) => {
+          scanProgressText.value = `${done}/${total}`;
+        });
         ongoingSigns.value = list;
         if (list.length === 0) {
-          alert('🔍 扫描完成：当前所有课程均无正在进行的签到活动');
+          alert('🔍 扫描完成：当前所有 55 门课程均无未签到活动');
         } else {
           alert(`🎯 扫描完成！共发现 ${list.length} 个正在进行的签到活动！`);
         }
@@ -392,6 +404,7 @@ const app = createApp({
         alert(`扫描失败: ${e.message}`);
       } finally {
         isScanning.value = false;
+        scanProgressText.value = '';
       }
     }
 
@@ -497,8 +510,15 @@ const app = createApp({
       isSubmittingSign.value = true;
       try {
         let result;
+        const targetActiveId = signForm.qrParsedAid || act.activeId;
+        if (!targetActiveId || targetActiveId === 0 || targetActiveId === '0') {
+          alert('请先输入有效的活动 ID 或扫描二维码');
+          isSubmittingSign.value = false;
+          return;
+        }
+
         const baseParams = {
-          activeId: act.activeId,
+          activeId: targetActiveId,
           courseId: act.courseId || 0,
           classId: act.classId || 0,
           uid: user.puid || user.uid,
@@ -673,6 +693,16 @@ const app = createApp({
       return window.CxCrypto.formatTime(timestamp);
     }
 
+    // 课程实时过滤搜索
+    const filteredCourses = Vue.computed(() => {
+      const kw = courseSearchKeyword.value.trim().toLowerCase();
+      if (!kw) return courses.value;
+      return courses.value.filter(c => {
+        return (c.name && c.name.toLowerCase().includes(kw)) ||
+               (c.teacher && c.teacher.toLowerCase().includes(kw));
+      });
+    });
+
     return {
       // 挂机守护相关
       isGuardianActive,
@@ -688,6 +718,10 @@ const app = createApp({
       savedAccounts,
       selectedPhone,
       courses,
+      filteredCourses,
+      courseSearchKeyword,
+      scanProgressText,
+      loadingActivities,
       loadingCourses,
       ongoingSigns,
       isScanning,
