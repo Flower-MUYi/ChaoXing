@@ -22,6 +22,7 @@
   <script src="js/crypto-utils.js"></script>
   <script src="js/cookie-jar.js"></script>
   <script src="js/gesture-lock.js"></script>
+  <script src="js/cracker-dict.js"></script>
   <script src="js/cx-api.js"></script>
 </head>
 <body class="bg-slate-50 text-slate-800">
@@ -140,7 +141,12 @@
               </span>
               正在进行的签到活动 ({{ ongoingSigns.length }})
             </div>
-            <button @click="ongoingSigns = []" class="text-xs text-white/80 hover:text-white">✕ 关闭</button>
+            <div class="flex items-center gap-2">
+              <button @click="autoSignAllOngoing" :disabled="isAutoSigningBatch" class="px-3 py-1 bg-amber-400 hover:bg-amber-300 text-slate-900 font-bold text-xs rounded-lg shadow transition flex items-center gap-1">
+                <span>⚡</span> {{ isAutoSigningBatch ? '正在全自动批量签到...' : '一键全部自动完成' }}
+              </button>
+              <button @click="ongoingSigns = []" class="text-xs text-white/80 hover:text-white">✕</button>
+            </div>
           </div>
           <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div v-for="act in ongoingSigns" :key="act.id" class="bg-white/10 backdrop-blur-sm border border-white/20 p-3.5 rounded-xl flex items-center justify-between">
@@ -148,9 +154,86 @@
                 <div class="font-bold text-sm">{{ act.courseName }} - {{ act.name }}</div>
                 <div class="text-xs text-white/80 mt-0.5">类型: {{ act.typeName }} | 教师: {{ act.teacher }}</div>
               </div>
-              <button @click="openSignModal(act)" class="px-3.5 py-1.5 bg-white text-emerald-700 hover:bg-emerald-50 font-bold text-xs rounded-lg shadow transition">
-                去签到
+              <div class="flex items-center gap-1.5">
+                <button @click="autoSignSingle(act)" class="px-2.5 py-1.5 bg-amber-400 hover:bg-amber-300 text-slate-900 font-bold text-xs rounded-lg shadow transition" title="自动嗅探位置/破解手势密码">
+                  ⚡ 自动签
+                </button>
+                <button @click="openSignModal(act)" class="px-2.5 py-1.5 bg-white text-emerald-700 hover:bg-emerald-50 font-bold text-xs rounded-lg shadow transition">
+                  手动
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 24小时无人值守自动挂机监控中心 -->
+        <div class="glass-panel p-5 border-slate-200/80 shadow-md space-y-4">
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-xl flex items-center justify-center text-xl shadow-sm" :class="isGuardianActive ? 'bg-emerald-100 text-emerald-600 animate-pulse' : 'bg-slate-100 text-slate-500'">
+                🤖
+              </div>
+              <div>
+                <h2 class="text-sm font-bold text-slate-800 flex items-center gap-2">
+                  24小时挂机自动签到守护
+                  <span class="text-[10px] px-2 py-0.5 rounded-full font-semibold" :class="isGuardianActive ? 'bg-emerald-500 text-white badge-live' : 'bg-slate-200 text-slate-600'">
+                    {{ isGuardianActive ? '守护运行中' : '已暂停' }}
+                  </span>
+                </h2>
+                <p class="text-xs text-slate-500 mt-0.5">
+                  自动巡检全部课程，遇到位置签到自动获取目标坐标，手势与签到码自动智能破解！
+                </p>
+              </div>
+            </div>
+
+            <!-- 控制开关与间隔设置 -->
+            <div class="flex items-center gap-3">
+              <div class="text-xs text-slate-500 hidden sm:flex items-center gap-1">
+                <span>巡检间隔:</span>
+                <select v-model="guardianIntervalMinutes" :disabled="isGuardianActive" class="text-xs border border-slate-300 rounded px-1.5 py-1 bg-white">
+                  <option :value="1">1 分钟</option>
+                  <option :value="2">2 分钟 (推荐)</option>
+                  <option :value="5">5 分钟</option>
+                  <option :value="10">10 分钟</option>
+                </select>
+              </div>
+              <button @click="toggleGuardian" class="px-4 py-2 font-bold text-xs rounded-xl shadow transition flex items-center gap-1.5" :class="isGuardianActive ? 'bg-red-50 hover:bg-red-100 text-red-600 border border-red-200' : 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white'">
+                <span>{{ isGuardianActive ? '⏹ 停止挂机' : '▶ 开启24小时挂机守护' }}</span>
               </button>
+            </div>
+          </div>
+
+          <!-- 挂机运行统计仪表盘 -->
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+            <div class="bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+              <div class="text-[10px] text-slate-400">已巡检轮次</div>
+              <div class="text-base font-bold text-slate-700 font-mono">{{ guardianStats.rounds }}</div>
+            </div>
+            <div class="bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+              <div class="text-[10px] text-slate-400">自动成功签到</div>
+              <div class="text-base font-bold text-emerald-600 font-mono">{{ guardianStats.successSigns }} 次</div>
+            </div>
+            <div class="bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+              <div class="text-[10px] text-slate-400">上次巡检时间</div>
+              <div class="text-xs font-semibold text-slate-600 mt-1 font-mono">{{ guardianStats.lastCheckTime || '尚未开始' }}</div>
+            </div>
+            <div class="bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+              <div class="text-[10px] text-slate-400">下次巡检倒计时</div>
+              <div class="text-base font-bold text-blue-600 font-mono">{{ isGuardianActive ? guardianCountdown + 's' : '--' }}</div>
+            </div>
+          </div>
+
+          <!-- 挂机控制台实时日志输出 -->
+          <div class="space-y-1.5">
+            <div class="flex items-center justify-between text-[11px] text-slate-500 font-medium">
+              <span>🖥️ 守护监控实时日志：</span>
+              <button @click="guardianLogs = []" class="text-slate-400 hover:text-slate-600 text-[10px]">清空日志</button>
+            </div>
+            <div class="bg-slate-900 text-slate-200 text-xs font-mono p-3 rounded-xl max-h-36 overflow-y-auto space-y-1 shadow-inner select-text">
+              <div v-if="guardianLogs.length === 0" class="text-slate-500 text-[11px]">暂无日志，点击开启挂机守护后将自动输出每次扫描动态...</div>
+              <div v-for="(log, i) in guardianLogs" :key="i" class="leading-relaxed text-[11px]" :class="log.type === 'success' ? 'text-emerald-400 font-bold' : log.type === 'error' ? 'text-red-400' : 'text-slate-300'">
+                <span class="text-slate-500">[{{ log.time }}]</span> {{ log.text }}
+              </div>
             </div>
           </div>
         </div>
@@ -290,9 +373,12 @@
               </div>
             </div>
 
-            <div>
-              <button @click="openSignModal(act)" class="px-4 py-2 font-semibold text-xs rounded-xl shadow-sm transition" :class="act.isOver ? 'bg-slate-200 hover:bg-slate-300 text-slate-700' : 'bg-blue-600 hover:bg-blue-700 text-white'">
-                {{ act.isOver ? '补签/查看' : '立即签到' }}
+            <div class="flex items-center gap-2">
+              <button v-if="!act.isOver" @click="autoSignSingle(act)" class="px-3 py-2 font-bold text-xs bg-amber-400 hover:bg-amber-300 text-slate-900 rounded-xl shadow-sm transition flex items-center gap-1">
+                <span>⚡</span> 自动签
+              </button>
+              <button @click="openSignModal(act)" class="px-3 py-2 font-semibold text-xs rounded-xl shadow-sm transition" :class="act.isOver ? 'bg-slate-200 hover:bg-slate-300 text-slate-700' : 'bg-blue-600 hover:bg-blue-700 text-white'">
+                {{ act.isOver ? '补签/查看' : '手动签到' }}
               </button>
             </div>
           </div>

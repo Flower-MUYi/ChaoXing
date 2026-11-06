@@ -22,8 +22,140 @@ const app = createApp({
     const showLocationPresetModal = ref(false);
     const showProxyModal = ref(false);
 
-    // 表单状态
-    const loginForm = reactive({ phone: '', password: '' });
+    // 24小时守护与自动挂机状态
+    const isGuardianActive = ref(false);
+    const guardianIntervalMinutes = ref(2);
+    const guardianCountdown = ref(120);
+    const guardianStats = reactive({ rounds: 0, successSigns: 0, lastCheckTime: '' });
+    const guardianLogs = ref([]);
+    const isAutoSigningBatch = ref(false);
+    let guardianTimer = null;
+    let countdownTimer = null;
+
+    function addGuardianLog(text, type = 'info') {
+      const pad = (n) => String(n).padStart(2, '0');
+      const now = new Date();
+      const timeStr = `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+      guardianLogs.value.unshift({ time: timeStr, text, type });
+      if (guardianLogs.value.length > 80) guardianLogs.value.pop();
+    }
+
+    // 开启/关闭 24 小时挂机守护
+    function toggleGuardian() {
+      if (isGuardianActive.value) {
+        isGuardianActive.value = false;
+        clearInterval(guardianTimer);
+        clearInterval(countdownTimer);
+        addGuardianLog('⏸ 挂机守护已手动停止', 'info');
+      } else {
+        if (!currentUser.value) {
+          alert('请先登录账号后再开启挂机守护');
+          return;
+        }
+        // 请求浏览器通知权限
+        if ('Notification' in window && Notification.permission !== 'granted') {
+          Notification.requestPermission();
+        }
+
+        isGuardianActive.value = true;
+        addGuardianLog(`▶ 24小时挂机守护已开启！每 ${guardianIntervalMinutes.value} 分钟自动巡检一次全部课程`, 'success');
+        startGuardianLoop();
+      }
+    }
+
+    function startGuardianLoop() {
+      const intervalSec = guardianIntervalMinutes.value * 60;
+      guardianCountdown.value = intervalSec;
+
+      // 启动立即执行一次
+      runGuardianCheck();
+
+      clearInterval(countdownTimer);
+      countdownTimer = setInterval(() => {
+        if (guardianCountdown.value > 0) {
+          guardianCountdown.value--;
+        } else {
+          guardianCountdown.value = intervalSec;
+          runGuardianCheck();
+        }
+      }, 1000);
+    }
+
+    async function runGuardianCheck() {
+      if (!isGuardianActive.value || !currentUser.value) return;
+      guardianStats.rounds++;
+      const now = new Date();
+      const pad = (n) => String(n).padStart(2, '0');
+      guardianStats.lastCheckTime = `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+
+      addGuardianLog(`[第 ${guardianStats.rounds} 轮] 正在巡检全部已选课程...`, 'info');
+
+      try {
+        if (courses.value.length === 0) {
+          await loadCourses();
+        }
+        const activeList = await api.scanAllActiveSigns(courses.value);
+        ongoingSigns.value = activeList;
+
+        if (activeList.length === 0) {
+          addGuardianLog(`✓ 巡检完成，当前共 ${courses.value.length} 门课程，暂无未签到活动`, 'info');
+        } else {
+          addGuardianLog(`🎯 发现 ${activeList.length} 个正在进行的签到活动！正在执行全自动打卡...`, 'success');
+
+          for (const act of activeList) {
+            await autoSignSingle(act, true);
+          }
+        }
+      } catch (err) {
+        addGuardianLog(`❌ 巡检过程出现异常: ${err.message}`, 'error');
+      }
+    }
+
+    // 单个活动一键自动签到 (位置自动获取、手势/密码自动破解)
+    async function autoSignSingle(act, isFromGuardian = false) {
+      addGuardianLog(`开始自动处理签到: [${act.courseName || ''} - ${act.name}] (类型: ${act.typeName})`, 'info');
+
+      try {
+        const res = await api.autoSign(act, currentUser.value, (msg) => {
+          addGuardianLog(`  ➜ ${msg}`, 'info');
+        });
+
+        if (res.success) {
+          guardianStats.successSigns++;
+          addGuardianLog(`🎉 成功自动打卡: [${act.courseName || ''} - ${act.name}]！${res.message}`, 'success');
+
+          // 发送系统级浏览器桌面通知
+          if ('Notification' in window && Notification.permission === 'granted') {
+            new Notification('【随地大小签】自动打卡成功！', {
+              body: `已为您完成 [${act.courseName || ''} - ${act.name}] ${act.typeName}！`,
+              icon: 'favicon.svg'
+            });
+          }
+
+          if (!isFromGuardian) {
+            alert(`🎉 自动打卡成功！\n${res.message}`);
+          }
+          // 从列表中移除已签活动
+          ongoingSigns.value = ongoingSigns.value.filter(a => a.id !== act.id);
+        } else {
+          addGuardianLog(`⚠️ 自动打卡返回: ${res.message}`, 'error');
+          if (!isFromGuardian) alert(res.message);
+        }
+      } catch (e) {
+        addGuardianLog(`❌ 自动打卡失败: ${e.message}`, 'error');
+        if (!isFromGuardian) alert(`❌ 自动打卡失败: ${e.message}`);
+      }
+    }
+
+    // 一键全部自动签到
+    async function autoSignAllOngoing() {
+      if (ongoingSigns.value.length === 0) return;
+      isAutoSigningBatch.value = true;
+      for (const act of ongoingSigns.value) {
+        await autoSignSingle(act);
+      }
+      isAutoSigningBatch.value = false;
+    }
     const isLoggingIn = ref(false);
     const cookieInput = ref('');
     const quickSignActiveId = ref('');
@@ -542,6 +674,16 @@ const app = createApp({
     }
 
     return {
+      // 挂机守护相关
+      isGuardianActive,
+      guardianIntervalMinutes,
+      guardianCountdown,
+      guardianStats,
+      guardianLogs,
+      isAutoSigningBatch,
+      toggleGuardian,
+      autoSignSingle,
+      autoSignAllOngoing,
       currentUser,
       savedAccounts,
       selectedPhone,

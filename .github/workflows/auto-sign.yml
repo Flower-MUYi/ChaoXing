@@ -1,0 +1,26 @@
+name: 24H Auto Sign Bot (云端自动签到机器人)
+
+on:
+  schedule:
+    # 每天 24 小时无休，每 15 分钟自动巡检一次
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Run Auto Sign Robot
+        env:
+          CX_PHONE: ${{ secrets.CX_PHONE || '18650828531' }}
+          CX_PASSWORD: ${{ secrets.CX_PASSWORD || 'muyi690.' }}
+          PUSH_PLUS_TOKEN: ${{ secrets.PUSH_PLUS_TOKEN }}
+        run: node bot/auto-sign.mjs

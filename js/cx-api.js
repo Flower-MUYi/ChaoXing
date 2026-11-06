@@ -362,8 +362,109 @@ class ChaoxingApi {
   }
 
   /**
-   * 1. 普通 / 拍照签到
+   * 自动探测并破解签到码 (4位数字)
    */
+  async crackPassword(activeId, onProgress = null) {
+    const list = window.COMMON_SIGN_CODES || [];
+    const testFn = async (code) => {
+      return await this.checkSignCode(activeId, code);
+    };
+    return await window.SignCracker.crackWithCandidates(list, testFn, 8, onProgress);
+  }
+
+  /**
+   * 自动探测并破解手势密码 (九宫格连线)
+   */
+  async crackGesture(activeId, onProgress = null) {
+    const list = window.COMMON_GESTURES || [];
+    const testFn = async (code) => {
+      return await this.checkSignCode(activeId, code);
+    };
+    return await window.SignCracker.crackWithCandidates(list, testFn, 8, onProgress);
+  }
+
+  /**
+   * 全自动智能签到 (一键搞定位置自动嗅探、手势/密码自动爆破、普通秒签)
+   */
+  async autoSign(activity, userInfo, logCallback = console.log) {
+    const activeId = activity.activeId || activity.id;
+    const baseParams = {
+      activeId,
+      courseId: activity.courseId || 0,
+      classId: activity.classId || 0,
+      uid: userInfo.puid || userInfo.uid,
+      name: userInfo.name,
+      fid: userInfo.fid || 0
+    };
+
+    const otherId = String(activity.otherId);
+
+    // 1. 位置签到：自动从接口获取教师设定的真实坐标与范围
+    if (otherId === '4') {
+      logCallback(`[${activity.name}] 正在自动嗅探教师设定的目标位置...`);
+      const detail = await this.getSignDetail(activeId);
+      
+      let lat = detail.locationLatitude;
+      let lng = detail.locationLongitude;
+      const range = detail.locationRange || 500;
+      const addr = detail.locationText || detail.address || '教师指定签到区域';
+
+      if (!lat || !lng || lat === -1 || lng === -1) {
+        throw new Error('未获取到教师指定的位置坐标，请手动设置位置');
+      }
+
+      logCallback(`[${activity.name}] 成功获取教师目标坐标: (${lat}, ${lng})，允许范围: ${range}米`);
+      logCallback(`[${activity.name}] 正在注入微抖动安全坐标并提交签到...`);
+
+      return await this.signLocation({
+        ...baseParams,
+        latitude: parseFloat(lat),
+        longitude: parseFloat(lng),
+        address: addr,
+        enableRandomize: true
+      });
+    }
+
+    // 2. 签到码签到：自动并发爆破
+    if (otherId === '5') {
+      logCallback(`[${activity.name}] 正在并发智能爆破签到码...`);
+      const crackedCode = await this.crackPassword(activeId, (cur, total, code) => {
+        if (cur % 20 === 0) logCallback(`爆破进度: ${cur}/${total} (测试: ${code})`);
+      });
+
+      if (!crackedCode) {
+        throw new Error('未能从高频字典中破解出签到码，教师可能设置了罕见密码');
+      }
+
+      logCallback(`🎉 成功破解签到码: 【${crackedCode}】！正在提交签到...`);
+      return await this.signPassword({
+        ...baseParams,
+        signCode: crackedCode
+      });
+    }
+
+    // 3. 手势签到：自动遍历常见九宫格手势
+    if (otherId === '3') {
+      logCallback(`[${activity.name}] 正在自动遍历常见九宫格手势...`);
+      const crackedGesture = await this.crackGesture(activeId, (cur, total, code) => {
+        if (cur % 15 === 0) logCallback(`手势测试进度: ${cur}/${total} (测试路径: ${code})`);
+      });
+
+      if (!crackedGesture) {
+        throw new Error('未能从高频手势字典中破解出有效手势');
+      }
+
+      logCallback(`🎉 成功破解手势路径: 【${crackedGesture}】！正在提交签到...`);
+      return await this.signGesture({
+        ...baseParams,
+        gestureCode: crackedGesture
+      });
+    }
+
+    // 4. 普通/拍照签到：直接提交
+    logCallback(`[${activity.name}] 正在提交普通签到...`);
+    return await this.signGeneral(baseParams);
+  }
   async signGeneral({ activeId, courseId, classId, uid, name, fid, objectId = null }) {
     await this.preSign(courseId, classId, activeId, uid);
     const params = {
